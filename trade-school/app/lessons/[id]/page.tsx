@@ -1,319 +1,324 @@
 "use client";
 
+import { use, useState } from "react";
 import AppShell from "@/components/AppShell";
-import ProgressBar from "@/components/ProgressBar";
 import Link from "next/link";
-import { useState } from "react";
+import { useTradeSchoolStore } from "@/lib/store";
+import { getLessonById, getCourseById } from "@/lib/curriculum";
+import type { QuizAttempt } from "@/lib/types";
 
-const lessonContent = {
-  title: "What Is a Call Option?",
-  course: "Options Fundamentals",
-  semester: 2,
-  lesson: 1,
-  duration: "12 min",
-  sections: [
-    {
-      heading: "Definition",
-      content:
-        "A call option is a financial contract that gives the buyer the right — but not the obligation — to purchase 100 shares of a specific stock at a predetermined price (the strike price) before or on a specific date (the expiration date). The buyer pays a premium for this right. If they choose not to exercise it, they simply lose the premium paid.",
-    },
-    {
-      heading: "A Simple Example",
-      content:
-        "Suppose Apple (AAPL) is trading at $180. You believe it will rise to $200 over the next 30 days. Instead of buying 100 shares for $18,000, you buy one call option with a $185 strike price expiring in 30 days for a $4.00 premium per share — a total cost of $400 (options control 100 shares). If AAPL rises to $200, your option is now worth at least $15 (the difference between current price and strike). Your $400 turned into $1,500 — a 275% return. If AAPL stays below $185, your maximum loss is the $400 premium.",
-    },
-    {
-      heading: "Why Traders Use Calls",
-      content:
-        "Call options allow traders to gain leveraged exposure to upward price movement with defined, limited risk. A trader who is right about direction can multiply returns relative to simply buying stock. Calls are also used in combination strategies like spreads, to reduce cost and define risk more precisely. Institutions use calls to hedge short positions, acquire stock at favorable prices, or generate income through covered calls.",
-    },
-    {
-      heading: "Common Beginner Mistake",
-      content:
-        "The most frequent error made by new options traders is buying calls into high implied volatility events — such as earnings announcements. Even when the stock moves in the expected direction, the collapse in implied volatility after the event (known as 'volatility crush') can cause the option to lose value. Buying a call right before earnings and watching the stock go up — yet still losing money — is a rite of passage for most traders, and a costly one.",
-    },
-  ],
-  keyTerms: [
-    { term: "Call Option", def: "A contract giving the right to buy 100 shares at the strike price before expiration." },
-    { term: "Strike Price", def: "The predetermined price at which the option buyer can purchase the stock." },
-    { term: "Expiration Date", def: "The date on which the option contract expires and becomes worthless if not exercised." },
-    { term: "Premium", def: "The price paid to purchase the option contract." },
-    { term: "In the Money (ITM)", def: "A call is ITM when the stock price is above the strike price." },
-    { term: "Out of the Money (OTM)", def: "A call is OTM when the stock price is below the strike price." },
-    { term: "Volatility Crush", def: "A sharp drop in implied volatility after a known event, reducing option premiums." },
-  ],
-  quizQuestions: [
-    {
-      q: "What does the buyer of a call option have the RIGHT to do?",
-      options: ["Sell 100 shares at the strike price", "Buy 100 shares at the strike price", "Receive dividends", "Sell the option at any time"],
-      correct: 1,
-    },
-    {
-      q: "If you buy a $185 call on AAPL for a $4.00 premium and AAPL expires at $183, what is your outcome?",
-      options: ["You profit $200", "You lose $400", "You break even", "You exercise the option"],
-      correct: 1,
-    },
-  ],
-};
+export default function LessonPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const store = useTradeSchoolStore();
+  const lesson = getLessonById(id);
+  const course = lesson ? getCourseById(lesson.courseId) : null;
 
-export default function LessonPage() {
-  const [activeSection, setActiveSection] = useState(0);
-  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
-  const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [activeSection, setActiveSection] = useState<"content" | "quiz" | "done">("content");
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
+  const [quizResult, setQuizResult] = useState<{
+    score: number;
+    passed: boolean;
+    correct: number;
+    total: number;
+    results: Record<string, { correct: boolean; correctAnswer: string; explanation: string }>;
+  } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const progress = ((activeSection + 1) / (lessonContent.sections.length + 1)) * 100;
+  const existingAttempt = lesson ? store.getQuizAttempt(lesson.id) : undefined;
+  const isCompleted = lesson ? store.isLessonCompleted(lesson.id) : false;
+
+  if (!lesson) {
+    return (
+      <AppShell>
+        <div style={{ textAlign: "center", padding: "80px 0" }}>
+          <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: "28px", fontWeight: 600 }}>Lesson Not Found</h2>
+          <Link href="/courses" className="btn-primary" style={{ marginTop: "20px", display: "inline-flex" }}>← Back to Curriculum</Link>
+        </div>
+      </AppShell>
+    );
+  }
+
+  // Parse content sections (split by ## headings)
+  const sections = lesson.content.split(/(?=^## )/m).filter(Boolean);
+
+  const submitQuiz = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/quiz/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lessonId: lesson.id, answers: quizAnswers }),
+      });
+      const data = await res.json();
+      setQuizResult(data);
+
+      const attempt: QuizAttempt = {
+        lessonId: lesson.id,
+        score: data.score,
+        passed: data.passed,
+        answers: quizAnswers,
+        attemptedAt: new Date().toISOString(),
+      };
+      store.saveQuizAttempt(attempt);
+      if (data.passed) {
+        store.markLessonComplete(lesson.id);
+      }
+      setActiveSection("done");
+    } catch {
+      alert("Failed to submit quiz. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const answeredAll = lesson.quiz.length > 0 && Object.keys(quizAnswers).length === lesson.quiz.length;
 
   return (
     <AppShell>
       {/* Breadcrumb */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "32px", fontSize: "13px", color: "var(--text-muted)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "28px", fontSize: "13px", color: "var(--text-muted)", flexWrap: "wrap" }}>
         <Link href="/courses" style={{ color: "var(--text-muted)", textDecoration: "none" }}>Curriculum</Link>
         <span>→</span>
-        <span style={{ color: "var(--text-muted)" }}>{lessonContent.course}</span>
-        <span>→</span>
-        <span style={{ color: "var(--text-main)", fontWeight: 500 }}>{lessonContent.title}</span>
+        {course && <Link href={`/courses/${course.id}`} style={{ color: "var(--text-muted)", textDecoration: "none" }}>{course.title}</Link>}
+        {course && <span>→</span>}
+        <span style={{ color: "var(--text-main)", fontWeight: 500 }}>{lesson.title}</span>
+        {isCompleted && <span className="badge badge-success" style={{ marginLeft: "6px" }}>Complete</span>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: "32px", alignItems: "start" }}>
-
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: "28px", alignItems: "start" }}>
         {/* Main content */}
         <div>
-          <div style={{ marginBottom: "32px" }}>
-            <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
-              <span className="badge badge-muted">Semester {lessonContent.semester}</span>
-              <span className="badge badge-gold">Lesson {lessonContent.lesson}</span>
-              <span style={{ fontSize: "12px", color: "var(--text-soft)", display: "flex", alignItems: "center", gap: "4px" }}>
-                ◷ {lessonContent.duration}
-              </span>
-            </div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 700, color: "var(--text-main)", margin: "0 0 24px", lineHeight: 1.2 }}>
-              {lessonContent.title}
-            </h1>
-            <ProgressBar percent={progress} label="Lesson Progress" />
-          </div>
-
-          {/* Sections */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "32px" }}>
-            {lessonContent.sections.map((section, i) => {
-              const isActive = i <= activeSection;
-              const isCurrent = i === activeSection;
-              return (
-                <div
-                  key={i}
-                  onClick={() => setActiveSection(i)}
-                  style={{
-                    padding: "24px 28px",
-                    background: isCurrent ? "var(--surface)" : isActive ? "var(--surface)" : "var(--background)",
-                    border: `1px solid ${isCurrent ? "var(--accent)" : "var(--border)"}`,
-                    borderRadius: "16px",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                    opacity: !isActive && i > activeSection ? 0.5 : 1,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: isActive ? "12px" : 0 }}>
-                    <div style={{
-                      width: "24px",
-                      height: "24px",
-                      borderRadius: "50%",
-                      background: isActive ? "var(--accent)" : "var(--border)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: isActive ? "var(--surface)" : "var(--text-soft)",
-                      flexShrink: 0,
-                    }}>
-                      {isActive ? "✓" : i + 1}
-                    </div>
-                    <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: "18px", fontWeight: 600, margin: 0, color: "var(--text-main)" }}>
-                      {section.heading}
-                    </h3>
-                  </div>
-                  {isActive && (
-                    <p style={{ fontSize: "15px", color: "var(--text-muted)", margin: "0 0 0 36px", lineHeight: 1.8 }}>
-                      {section.content}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Navigation */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "40px" }}>
-            <button
-              onClick={() => setActiveSection(Math.max(0, activeSection - 1))}
-              className="btn-secondary"
-              disabled={activeSection === 0}
-              style={{ opacity: activeSection === 0 ? 0.4 : 1 }}
-            >
-              ← Previous
-            </button>
-            {activeSection < lessonContent.sections.length - 1 ? (
-              <button
-                onClick={() => setActiveSection(activeSection + 1)}
-                className="btn-primary"
-              >
-                Continue →
-              </button>
-            ) : (
-              <button
-                onClick={() => setActiveSection(lessonContent.sections.length)}
-                className="btn-primary"
-              >
-                Take Quiz →
-              </button>
-            )}
-          </div>
-
-          {/* Quiz */}
-          {activeSection >= lessonContent.sections.length && (
-            <div className="card animate-fade-in" style={{ padding: "32px" }}>
-              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "22px", fontWeight: 600, marginBottom: "24px" }}>
-                Knowledge Check
-              </div>
-              {lessonContent.quizQuestions.map((q, qi) => (
-                <div key={qi} style={{ marginBottom: "28px" }}>
-                  <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-main)", marginBottom: "14px", lineHeight: 1.5 }}>
-                    {qi + 1}. {q.q}
-                  </p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {q.options.map((opt, oi) => {
-                      const selected = quizAnswers[qi] === oi;
-                      const correct = quizSubmitted && oi === q.correct;
-                      const wrong = quizSubmitted && selected && oi !== q.correct;
-                      return (
-                        <button
-                          key={oi}
-                          onClick={() => !quizSubmitted && setQuizAnswers({ ...quizAnswers, [qi]: oi })}
-                          style={{
-                            padding: "12px 16px",
-                            borderRadius: "10px",
-                            border: `1.5px solid ${correct ? "var(--success)" : wrong ? "var(--danger)" : selected ? "var(--accent)" : "var(--border)"}`,
-                            background: correct ? "rgba(46,110,82,0.08)" : wrong ? "rgba(140,59,59,0.08)" : selected ? "rgba(181,138,60,0.08)" : "transparent",
-                            textAlign: "left",
-                            fontSize: "14px",
-                            color: "var(--text-main)",
-                            cursor: quizSubmitted ? "default" : "pointer",
-                            transition: "all 0.15s ease",
-                            fontWeight: selected ? 500 : 400,
-                          }}
-                        >
-                          {opt}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-              {!quizSubmitted ? (
-                <button
-                  onClick={() => setQuizSubmitted(true)}
-                  className="btn-primary"
-                  disabled={Object.keys(quizAnswers).length < lessonContent.quizQuestions.length}
-                  style={{ opacity: Object.keys(quizAnswers).length < lessonContent.quizQuestions.length ? 0.5 : 1 }}
-                >
-                  Submit Answers
-                </button>
-              ) : (
-                <div style={{ marginTop: "16px", padding: "20px", background: "var(--surface-alt)", borderRadius: "12px" }}>
-                  <div style={{ fontWeight: 600, fontSize: "16px", color: "var(--success)", marginBottom: "8px" }}>
-                    ✓ Review Complete
-                  </div>
-                  <p style={{ fontSize: "14px", color: "var(--text-muted)", margin: "0 0 16px" }}>
-                    Good work. Proceed to the next lesson when you are ready.
-                  </p>
-                  <Link href="/courses" className="btn-primary" style={{ fontSize: "13px" }}>
-                    Back to Curriculum →
-                  </Link>
-                </div>
+          {/* Lesson header */}
+          <div style={{ marginBottom: "24px" }}>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
+              {course && <span className="badge badge-muted">{course.title}</span>}
+              <span className="badge badge-gold">Lesson {lesson.order}</span>
+              {existingAttempt && (
+                <span className="badge" style={{ background: existingAttempt.passed ? "rgba(46,110,82,0.1)" : "rgba(197,139,42,0.1)", color: existingAttempt.passed ? "var(--success)" : "var(--warning)" }}>
+                  Quiz: {existingAttempt.score}% {existingAttempt.passed ? "✓" : "— Retry"}
+                </span>
               )}
             </div>
-          )}
-
-          {/* Phase 2 placeholder */}
-          <div
-            style={{
-              marginTop: "32px",
-              padding: "32px",
-              background: "var(--surface)",
-              border: "1px dashed var(--border)",
-              borderRadius: "18px",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-soft)", marginBottom: "10px" }}>
-              Phase 2 Feature
-            </div>
-            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: "20px", fontWeight: 600, margin: "0 0 8px", color: "var(--text-main)" }}>
-              Interactive Simulation
-            </h3>
-            <p style={{ fontSize: "14px", color: "var(--text-muted)", margin: "0 0 12px", lineHeight: 1.7 }}>
-              Adjust a stock price slider, select a strike price, set an expiration date,
-              and watch how the option premium changes in real time using a live pricing model.
-            </p>
-            <span className="badge badge-muted">Coming in Phase 2</span>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div style={{ position: "sticky", top: "80px", display: "flex", flexDirection: "column", gap: "16px" }}>
-
-          {/* Key Terms */}
-          <div className="card" style={{ padding: "24px" }}>
-            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: "18px", fontWeight: 600, margin: "0 0 16px" }}>Key Terms</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {lessonContent.keyTerms.map((item) => (
-                <div key={item.term} style={{ borderLeft: "3px solid var(--accent)", paddingLeft: "12px" }}>
-                  <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text-main)", marginBottom: "2px" }}>{item.term}</div>
-                  <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.5 }}>{item.def}</div>
-                </div>
-              ))}
-            </div>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(26px, 4vw, 38px)", fontWeight: 700, margin: 0, lineHeight: 1.15, color: "var(--text-main)" }}>
+              {lesson.title}
+            </h1>
+            <p style={{ fontSize: "15px", color: "var(--text-muted)", marginTop: "10px", lineHeight: 1.6 }}>{lesson.summary}</p>
           </div>
 
-          {/* Lesson nav */}
-          <div className="card" style={{ padding: "24px" }}>
-            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: "16px", fontWeight: 600, margin: "0 0 14px" }}>In This Lesson</h3>
-            {lessonContent.sections.map((s, i) => (
+          {/* Tab nav */}
+          <div style={{ display: "flex", gap: "4px", marginBottom: "24px", background: "var(--surface-alt)", padding: "4px", borderRadius: "12px", width: "fit-content" }}>
+            {[
+              { key: "content", label: "Lesson Content" },
+              { key: "quiz", label: `Quiz (${lesson.quiz.length} questions)` },
+            ].map((tab) => (
               <button
-                key={i}
-                onClick={() => setActiveSection(i)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: "8px",
-                  background: activeSection === i ? "rgba(181,138,60,0.08)" : "transparent",
-                  border: "none",
-                  textAlign: "left",
-                  cursor: "pointer",
-                  marginBottom: "2px",
-                }}
+                key={tab.key}
+                onClick={() => setActiveSection(tab.key as "content" | "quiz")}
+                style={{ padding: "7px 18px", borderRadius: "8px", border: "none", background: activeSection === tab.key || (activeSection === "done" && tab.key === "quiz") ? "var(--surface)" : "transparent", color: activeSection === tab.key || (activeSection === "done" && tab.key === "quiz") ? "var(--text-main)" : "var(--text-muted)", fontWeight: activeSection === tab.key ? 600 : 400, fontSize: "13px", cursor: "pointer", boxShadow: (activeSection === tab.key) ? "0 2px 8px rgba(31,31,31,0.08)" : "none", transition: "all 0.15s ease" }}
               >
-                <span style={{ fontSize: "12px", fontFamily: "'IBM Plex Mono', monospace", color: "var(--text-soft)", width: "16px" }}>
-                  {i + 1}
-                </span>
-                <span style={{ fontSize: "13px", color: activeSection === i ? "var(--accent)" : "var(--text-muted)", fontWeight: activeSection === i ? 600 : 400 }}>
-                  {s.heading}
-                </span>
+                {tab.label}
               </button>
             ))}
           </div>
 
-          {/* Professor note */}
-          <div style={{ padding: "20px", background: "var(--text-main)", borderRadius: "16px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent)", marginBottom: "8px" }}>
-              Professor's Note
+          {/* Content tab */}
+          {activeSection === "content" && (
+            <div>
+              {sections.map((section, i) => {
+                const lines = section.trim().split("\n");
+                const heading = lines[0].replace(/^## /, "");
+                const body = lines.slice(1).join("\n").trim();
+
+                return (
+                  <div key={i} className="card" style={{ padding: "28px 32px", marginBottom: "14px" }}>
+                    <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: "22px", fontWeight: 600, margin: "0 0 16px", color: "var(--text-main)" }}>{heading}</h2>
+                    <div style={{ fontSize: "15px", color: "var(--text-muted)", lineHeight: 1.85 }}>
+                      {body.split("\n").map((line, j) => {
+                        if (line.startsWith("### ")) {
+                          return <h3 key={j} style={{ fontFamily: "'Playfair Display', serif", fontSize: "18px", fontWeight: 600, color: "var(--text-main)", margin: "20px 0 8px" }}>{line.replace("### ", "")}</h3>;
+                        }
+                        if (line.startsWith("> ")) {
+                          return <blockquote key={j} style={{ borderLeft: "3px solid var(--accent)", paddingLeft: "16px", margin: "16px 0", color: "var(--text-main)", fontStyle: "italic", fontSize: "14px" }}>{line.replace("> ", "")}</blockquote>;
+                        }
+                        if (line.startsWith("- ") || line.startsWith("* ")) {
+                          return <div key={j} style={{ display: "flex", gap: "8px", marginBottom: "6px" }}><span style={{ color: "var(--accent)", flexShrink: 0 }}>·</span><span>{line.replace(/^[-*] /, "")}</span></div>;
+                        }
+                        if (line.startsWith("**") && line.endsWith("**")) {
+                          return <p key={j} style={{ margin: "12px 0 4px" }}><strong style={{ color: "var(--text-main)", fontWeight: 700 }}>{line.replace(/\*\*/g, "")}</strong></p>;
+                        }
+                        if (line.startsWith("|")) {
+                          return null; // skip table lines for now
+                        }
+                        if (line.trim() === "") return <br key={j} />;
+                        // Bold inline
+                        const parts = line.split(/(\*\*[^*]+\*\*)/g);
+                        return (
+                          <p key={j} style={{ margin: "0 0 4px" }}>
+                            {parts.map((p, k) =>
+                              p.startsWith("**") ? <strong key={k} style={{ color: "var(--text-main)", fontWeight: 600 }}>{p.replace(/\*\*/g, "")}</strong> : p
+                            )}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
+                <button onClick={() => setActiveSection("quiz")} className="btn-primary">
+                  Take the Quiz →
+                </button>
+              </div>
             </div>
-            <p style={{ fontSize: "13px", color: "rgba(253,251,247,0.75)", margin: 0, lineHeight: 1.7 }}>
-              The most valuable thing you will learn in this lesson is not the mechanics —
-              it is understanding what you are actually paying for when you buy an option.
+          )}
+
+          {/* Quiz tab */}
+          {(activeSection === "quiz" || activeSection === "done") && (
+            <div>
+              {activeSection === "done" && quizResult && (
+                <div className="animate-fade-in" style={{ padding: "24px 28px", borderRadius: "16px", background: quizResult.passed ? "rgba(46,110,82,0.08)" : "rgba(197,139,42,0.08)", border: `1px solid ${quizResult.passed ? "rgba(46,110,82,0.25)" : "rgba(197,139,42,0.25)"}`, marginBottom: "24px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    <div style={{ fontSize: "32px" }}>{quizResult.passed ? "✓" : "○"}</div>
+                    <div>
+                      <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: "22px", fontWeight: 600, margin: "0 0 4px", color: quizResult.passed ? "var(--success)" : "var(--warning)" }}>
+                        {quizResult.passed ? "Lesson Complete!" : "Keep Studying"}
+                      </h3>
+                      <p style={{ fontSize: "14px", color: "var(--text-muted)", margin: 0 }}>
+                        Score: <strong style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{quizResult.score}%</strong>
+                        {" "}({quizResult.correct} / {quizResult.total} correct)
+                        {quizResult.passed ? " — Lesson marked complete." : " — Score 80%+ to complete this lesson."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                {lesson.quiz.map((q, qi) => {
+                  const result = quizResult?.results[q.id];
+                  return (
+                    <div key={q.id} className="card" style={{ padding: "24px 28px" }}>
+                      <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-main)", margin: "0 0 16px", lineHeight: 1.5 }}>
+                        {qi + 1}. {q.question}
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {q.choices.map((choice) => {
+                          const selected = quizAnswers[q.id] === choice;
+                          const isCorrect = result?.correct && selected;
+                          const isWrong = result && !result.correct && selected;
+                          const isActuallyCorrect = result && choice === result.correctAnswer;
+                          return (
+                            <button
+                              key={choice}
+                              onClick={() => !quizResult && setQuizAnswers({ ...quizAnswers, [q.id]: choice })}
+                              style={{
+                                padding: "12px 16px",
+                                borderRadius: "10px",
+                                border: `1.5px solid ${isCorrect || isActuallyCorrect && quizResult ? "var(--success)" : isWrong ? "var(--danger)" : selected ? "var(--accent)" : "var(--border)"}`,
+                                background: isCorrect || isActuallyCorrect && quizResult ? "rgba(46,110,82,0.08)" : isWrong ? "rgba(140,59,59,0.08)" : selected ? "rgba(181,138,60,0.08)" : "transparent",
+                                textAlign: "left",
+                                fontSize: "14px",
+                                color: "var(--text-main)",
+                                cursor: quizResult ? "default" : "pointer",
+                                transition: "all 0.15s ease",
+                                fontWeight: selected ? 500 : 400,
+                              }}
+                            >
+                              {choice}
+                              {isCorrect && " ✓"}
+                              {isActuallyCorrect && quizResult && !selected && " ← correct"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {result && (
+                        <div style={{ marginTop: "12px", padding: "12px 14px", background: "var(--surface-alt)", borderRadius: "10px" }}>
+                          <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: result.correct ? "var(--success)" : "var(--danger)", marginBottom: "4px" }}>
+                            {result.correct ? "Correct" : "Incorrect"}
+                          </div>
+                          <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>{q.explanation}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!quizResult && (
+                <div style={{ marginTop: "20px", display: "flex", gap: "12px" }}>
+                  <button onClick={() => setActiveSection("content")} className="btn-secondary">← Back to Lesson</button>
+                  <button
+                    onClick={submitQuiz}
+                    className="btn-primary"
+                    disabled={!answeredAll || submitting}
+                    style={{ opacity: !answeredAll || submitting ? 0.5 : 1 }}
+                  >
+                    {submitting ? "Grading..." : "Submit Quiz"}
+                  </button>
+                </div>
+              )}
+
+              {quizResult && (
+                <div style={{ marginTop: "20px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                  {!quizResult.passed && (
+                    <button onClick={() => { setQuizAnswers({}); setQuizResult(null); setActiveSection("quiz"); }} className="btn-secondary">
+                      Retry Quiz
+                    </button>
+                  )}
+                  {course && (
+                    <Link href={`/courses/${course.id}`} className="btn-primary">
+                      {quizResult.passed ? "Next Lesson →" : "Back to Course"}
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div style={{ position: "sticky", top: "80px", display: "flex", flexDirection: "column", gap: "16px" }}>
+          {/* Key Terms */}
+          <div className="card" style={{ padding: "22px" }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: "17px", fontWeight: 600, margin: "0 0 14px" }}>Key Terms</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {lesson.keyTerms.map((item) => (
+                <div key={item.term} style={{ borderLeft: "3px solid var(--accent)", paddingLeft: "12px" }}>
+                  <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text-main)", marginBottom: "2px" }}>{item.term}</div>
+                  <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.5 }}>{item.definition}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Progress */}
+          <div className="card" style={{ padding: "22px" }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: "16px", fontWeight: 600, margin: "0 0 12px" }}>Your Progress</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>Lesson</span>
+                <span className={isCompleted ? "badge badge-success" : "badge badge-muted"}>{isCompleted ? "Complete" : "In Progress"}</span>
+              </div>
+              {existingAttempt && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>Best quiz score</span>
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", fontWeight: 600, color: existingAttempt.passed ? "var(--success)" : "var(--warning)" }}>{existingAttempt.score}%</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Professor note */}
+          <div style={{ padding: "18px 20px", background: "var(--text-main)", borderRadius: "16px" }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--accent)", marginBottom: "8px" }}>Professor's Note</div>
+            <p style={{ fontSize: "13px", color: "rgba(253,251,247,0.75)", margin: "0 0 12px", lineHeight: 1.6 }}>
+              Have a question about this lesson? Ask Professor in the coaching session.
             </p>
+            <Link href={`/coach?lesson=${encodeURIComponent(lesson.title)}`} style={{ fontSize: "12px", color: "var(--accent)", textDecoration: "none", fontWeight: 600 }}>
+              Ask Professor →
+            </Link>
           </div>
         </div>
       </div>
