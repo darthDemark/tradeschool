@@ -1,0 +1,219 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  --background: #F7F3EB;
+  --surface: #FDFBF7;
+  --surface-alt: #EFE7D8;
+  --text-main: #1F1F1F;
+  --text-muted: #6B6B6B;
+  --text-soft: #8A8378;
+  --border: #DDD2BF;
+  --accent: #B58A3C;
+  --accent-dark: #8F6828;
+  --success: #2E6E52;
+  --danger: #8C3B3B;
+  --warning: #C58B2A;
+  --chart-line: #1F1F1F;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--text-main);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--text-main);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-serif {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.font-mono {
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+}
+
+.font-sans {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Card styles */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(31, 31, 31, 0.06);
+}
+
+/* Button styles */
+.btn-primary {
+  background: var(--accent);
+  color: var(--text-main);
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 12px 28px;
+  transition: background 0.2s ease, transform 0.1s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+}
+
+.btn-primary:hover {
+  background: var(--accent-dark);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-main);
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  font-weight: 500;
+  font-size: 14px;
+  padding: 11px 28px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  background: rgba(181, 138, 60, 0.05);
+}
+
+/* Section heading divider */
+.section-divider {
+  width: 40px;
+  height: 2px;
+  background: var(--accent);
+  margin-bottom: 16px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-soft);
+}
+
+/* Progress bar */
+.progress-bar {
+  background: var(--surface-alt);
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: var(--accent);
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+/* Badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.badge-gold {
+  background: rgba(181, 138, 60, 0.12);
+  color: var(--accent-dark);
+}
+
+.badge-success {
+  background: rgba(46, 110, 82, 0.1);
+  color: var(--success);
+}
+
+.badge-danger {
+  background: rgba(140, 59, 59, 0.1);
+  color: var(--danger);
+}
+
+.badge-muted {
+  background: var(--surface-alt);
+  color: var(--text-muted);
+}
+
+/* Nav active state */
+.nav-item-active {
+  background: rgba(181, 138, 60, 0.1);
+  color: var(--accent);
+}
+
+/* Locked state */
+.locked {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease forwards;
+}
+
+/* Toast */
+.toast {
+  background: var(--text-main);
+  color: var(--surface);
+  border-radius: 12px;
+  padding: 14px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 20px 60px rgba(31,31,31,0.2);
+}
+
+/* Mock chart container */
+.chart-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+}
